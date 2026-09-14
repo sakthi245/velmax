@@ -1,0 +1,28 @@
+# API Client Config for {{ profile.url }}
+
+BASE_URL = "{{ profile.url }}"
+ENDPOINTS = {{ profile.api_endpoints | tojson }}
+AUTH_METHOD = "{{ profile.auth_type or 'none' }}"
+
+{% if profile.auth_type == "oauth2" %}
+OAUTH_CLIENT_ID = "{{ config.api_engine.oauth_client_id }}"
+OAUTH_CLIENT_SECRET = "{{ config.api_engine.oauth_client_secret }}"
+OAUTH_TOKEN_URL = "{{ config.api_engine.oauth_token_url }}"
+{% elif profile.auth_type == "bearer" %}
+AUTH_TOKEN = "{{ config.api_engine.auth_token }}"
+{% elif profile.auth_type == "api_key" %}
+API_KEY = "{{ config.api_engine.api_key }}"
+{% endif %}
+
+RATE_LIMIT_PER_ENDPOINT = {{ config.api_engine.rate_limit_per_endpoint }}
+MOCK_MODE = {{ config.api_engine.mock_mode | lower }}
+MOCK_HAR_PATH = "{{ config.api_engine.mock_har_path or '' }}"
+GRAPHQL_INTROSPECTION = {{ config.api_engine.graphql_introspection | lower }}
+
+DEFAULT_HEADERS = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+}
+
+TIMEOUT = 30.0
+MAX_RETRIES = 3

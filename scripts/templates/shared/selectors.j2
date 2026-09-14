@@ -1,0 +1,48 @@
+"""
+Shared selector utilities
+"""
+
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
+from enum import Enum
+
+
+class SelectorType(Enum):
+    CSS = "css"
+    XPATH = "xpath"
+    REGEX = "regex"
+    JSONPATH = "jsonpath"
+
+
+@dataclass
+class SelectorConfig:
+    selector: str
+    selector_type: SelectorType = SelectorType.CSS
+    attribute: Optional[str] = None
+    multiple: bool = False
+    required: bool = False
+    default: Any = None
+    transform: Optional[str] = None
+
+
+def build_selectors_from_profile(profile) -> Dict[str, SelectorConfig]:
+    """Build selector configs from profile"""
+    selectors = {}
+    for field_name, selector_list in profile.selectors.items():
+        if isinstance(selector_list, list) and selector_list:
+            sel_config = selector_list[0]
+        elif isinstance(selector_list, dict):
+            sel_config = selector_list
+        else:
+            sel_config = {"selector": str(selector_list)}
+
+        selectors[field_name] = SelectorConfig(
+            selector=sel_config.get("selector", ""),
+            selector_type=SelectorType(sel_config.get("selector_type", "css")),
+            attribute=sel_config.get("attribute"),
+            multiple=sel_config.get("multiple", False),
+            required=sel_config.get("required", False),
+            default=sel_config.get("default"),
+            transform=sel_config.get("transform"),
+        )
+    return selectors

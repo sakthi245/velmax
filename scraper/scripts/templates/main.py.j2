@@ -1,0 +1,134 @@
+"""Auto-generated scraper for {{ profile.url }}
+Engine: {{ engine.value }}
+Generated at: {{ timestamp }}
+"""
+import asyncio
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from scraper.universal_runner import UniversalRunner
+from scraper.config import UniversalConfig
+from scraper.config.schemas import UniversalRequest, OutputFormat, EngineType
+from scraper.engines.registry_v2 import EngineRegistryV2
+
+# ScrapingConfig is defined in config_code (exec'd in same namespace)
+# No import needed - it's already available as ScrapingConfig
+
+
+async def _scrape_with_engine(runner: UniversalRunner, request: UniversalRequest) -> "UniversalResult":
+    """Run a single scrape attempt. Engine-agnostic — UniversalRunner handles engine selection and fallback."""
+    return await runner.scrape(request)
+
+
+async def _scrape_multi_page(
+    runner: UniversalRunner,
+    request: UniversalRequest,
+    max_pages: int,
+) -> list:
+    """
+    Scrape multiple pages, delegating engine choice to UniversalRunner for each page.
+    Works for any site / any engine. For sites with URL-parameter pagination,
+    paginates via the URL; otherwise relies on the engine's built-in crawl capabilities
+    (Crawlee follow_links, Firecrawl crawl, Scrapy Spider, Playwright click).
+    """
+    from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
+    all_data = []
+    last_result = None
+    parsed = urlparse(request.url)
+    base_query = parse_qs(parsed.query)
+
+    for page_idx in range(max_pages):
+        if page_idx > 0 and base_query:
+            # Try URL-parameter pagination first (e.g. ?page=2, ?p=2) — engine-agnostic
+            next_query = dict(base_query)
+            # Detect existing page param
+            page_key = "page" if "page" in base_query else ("p" if "p" in base_query else None)
+            if page_key:
+                try:
+                    next_query[page_key] = [str(int(base_query[page_key][0]) + page_idx)]
+                except (ValueError, IndexError):
+                    next_query[page_key] = [str(page_idx + 1)]
+            else:
+                next_query["page"] = [str(page_idx + 1)]
+            next_url = urlunparse(parsed._replace(query=urlencode(next_query, doseq=True)))
+            page_request = request.model_copy(update={"url": next_url, "max_pages": 1})
+            last_result = await _scrape_with_engine(runner, page_request)
+        elif page_idx > 0:
+            # No URL params available — use engine's own pagination (Crawlee/Firecrawl/Playwright)
+            page_request = request.model_copy(update={"max_pages": page_idx + 1})
+            last_result = await _scrape_with_engine(runner, page_request)
+            break  # Engine handled multi-page internally
+        else:
+            # First page
+            last_result = await _scrape_with_engine(runner, request)
+
+        if last_result and last_result.success:
+            data = last_result.data
+            if isinstance(data, list):
+                all_data.extend(data)
+            elif data is not None:
+                all_data.append(data)
+            if not last_result.success:
+                break
+        else:
+            break
+
+    if last_result:
+        # Return aggregated result with all collected data
+        last_result.data = all_data
+    return last_result
+
+
+async def main():
+    """Main entry point for the scraper."""
+    config = ScrapingConfig()
+
+    config_obj = UniversalConfig()
+    runner = UniversalRunner(config_obj)
+
+    # Build output formats list
+    output_formats = []
+    {% for fmt in requirements.output_formats %}
+    output_formats.append(OutputFormat["{{ fmt.name }}"])
+    {% endfor %}
+
+    request = UniversalRequest(
+        url={{ profile.url | tojson }},
+        goal={{ requirements.goal | tojson }},
+        max_pages={{ requirements.max_pages }},
+        depth={{ requirements.depth }},
+        output_formats=output_formats,
+        engine=EngineType["{{ engine.name }}"] if "{{ engine.name }}" != "auto" else None,
+        engine_options={
+            "headless": {{ requirements.use_stealth }},
+            "stealth_mode": {{ requirements.use_stealth }},
+        },
+        use_proxy={{ requirements.use_proxy }},
+        extract_schema={{ requirements.extraction_schema if requirements.extraction_schema is not none else None }},
+    )
+
+    # Engine-agnostic multi-page scrape. UniversalRunner picks the best engine
+    # (Crawlee / Firecrawl / Playwright / Scrapy) per page. The engine itself
+    # handles site-specific DOM details.
+    if request.max_pages and request.max_pages > 1:
+        result = await _scrape_multi_page(runner, request, request.max_pages)
+    else:
+        result = await _scrape_with_engine(runner, request)
+
+    if result.success:
+        count = len(result.data) if isinstance(result.data, list) else 1
+        print(f"SUCCESS: Scraped {count} items")
+        print(f"Engine: {result.engine_used}")
+        print(f"Quality: {result.quality_score:.2f}")
+        return 0
+    else:
+        print(f"FAILED: {result.error}")
+        return 1
+
+if __name__ == "__main__":
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code)

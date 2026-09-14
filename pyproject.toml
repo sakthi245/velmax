@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "velmax"
+version = "0.3.0"
+description = "Universal Hybrid Scraper - Option A (Universal Runner) + Option B (Script Generator) with Smart Fallback"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+    "prometheus-client>=0.19",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+    "tenacity>=8.2",
+    "xxhash>=3.4",
+    "selectolax>=0.3",
+    "parsel>=1.8",
+    "lxml>=4.9",
+    "cssselect>=1.2",
+    "w3lib>=2.1",
+    "jinja2>=3.1",
+    "aiohttp>=3.9",
+    "httpx>=0.27",
+    "asyncpg>=0.28",
+    "redis>=5.0",
+    "aiokafka>=0.8",
+    "aioboto3>=12.0",
+    "aio-pika>=9.0",
+    "polars>=1.5",
+    "pyarrow>=16.0",
+    "openpyxl>=3.1",
+    "sqlalchemy>=2.0",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+playwright = ["playwright>=1.44"]
+crawlee = ["crawlee[playwright]>=1.9"]
+groq = ["groq>=0.6"]
+firecrawl = ["firecrawl-py>=0.6"]
+stealth = ["playwright-stealth>=1.0"]
+graphql = ["graphql-core>=3.2", "strawberry-graphql>=0.200"]
+opentelemetry = [
+    "opentelemetry-api>=1.21",
+    "opentelemetry-sdk>=1.21",
+    "opentelemetry-exporter-otlp>=1.21",
+]
+search = ["tinyfish>=0.6.0", "serpapi>=1.1.0"]
+all = [
+    "playwright>=1.44",
+    "crawlee[playwright]>=1.9",
+    "groq>=0.6",
+    "firecrawl-py>=0.6",
+    "playwright-stealth>=1.0",
+    "graphql-core>=3.2",
+    "strawberry-graphql>=0.200",
+    "opentelemetry-api>=1.21",
+    "opentelemetry-sdk>=1.21",
+    "opentelemetry-exporter-otlp>=1.21",
+    "tinyfish>=0.6.0",
+    "serpapi>=1.1.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "pytest-cov>=4.1",
+    "pytest-xdist>=3.5",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "pre-commit>=3.6",
+    "bandit>=1.7",
+    "safety>=3.0",
+]
+
+[project.scripts]
+velmax = "custom_scripts.universal_scraper_v2:main"
+velmax-scrape = "custom_scripts.universal_scraper_v2:main"
+velmax-generate = "custom_scripts.universal_scraper_v2:main"
+velmax-profile = "custom_scripts.universal_scraper_v2:main"
+velmax-run-script = "custom_scripts.universal_scraper_v2:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scraper*", "scripts*", "custom_scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "T20"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

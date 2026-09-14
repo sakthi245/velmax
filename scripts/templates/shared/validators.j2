@@ -1,0 +1,79 @@
+"""
+Shared validation utilities
+"""
+
+import jsonschema
+from typing import Dict, Any, List, Tuple, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class ValidationResult:
+    valid: bool
+    errors: List[str] = None
+    warnings: List[str] = None
+
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
+        if self.warnings is None:
+            self.warnings = []
+
+
+class DataValidator:
+    """Validate scraped data against schema"""
+
+    def __init__(self, schema: Dict[str, Any] = None):
+        self.schema = schema or {}
+
+    def validate(self, data: Dict[str, Any]) -> ValidationResult:
+        if not self.schema:
+            return ValidationResult(valid=True)
+
+        try:
+            jsonschema.validate(data, self.schema)
+            return ValidationResult(valid=True)
+        except jsonschema.ValidationError as e:
+            return ValidationResult(
+                valid=False,
+                errors=[f"{e.json_path}: {e.message}"],
+            )
+
+    def validate_batch(self, items: List[Dict[str, Any]]) -> List[ValidationResult]:
+        return [self.validate(item) for item in items]
+
+
+class RequiredFieldValidator:
+    """Validate required fields are present"""
+
+    def __init__(self, required_fields: List[str]):
+        self.required_fields = required_fields
+
+    def validate(self, data: Dict[str, Any]) -> ValidationResult:
+        missing = [f for f in self.required_fields if f not in data or not data[f]]
+        if missing:
+            return ValidationResult(
+                valid=False,
+                errors=[f"Missing required fields: {', '.join(missing)}"],
+            )
+        return ValidationResult(valid=True)
+
+
+class TypeValidator:
+    """Validate field types"""
+
+    def __init__(self, type_map: Dict[str, type]):
+        self.type_map = type_map
+
+    def validate(self, data: Dict[str, Any]) -> ValidationResult:
+        errors = []
+        for field, expected_type in self.type_map.items():
+            if field in data and data[field] is not None:
+                if not isinstance(data[field], expected_type):
+                    errors.append(
+                        f"Field '{field}': expected {expected_type.__name__}, "
+                        f"got {type(data[field]).__name__}"
+                    )
+        if errors:
+            return ValidationResult(valid=False, errors=errors)
+        return ValidationResult(valid=True)

@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""
+Generated API Client for {{ profile.url }}
+Generated at: {{ timestamp }}
+Profile: {{ profile.category }} | Anti-bot: {{ profile.anti_bot_level }}
+"""
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, List, Optional
+import httpx
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScrapedItem:
+    url: str
+    title: str = ""
+    content: str = ""
+    data: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+        if self.metadata is None:
+            self.metadata = {}
+
+
+class {{ profile.category | capitalize }}APIClient:
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+        self.client: Optional[httpx.AsyncClient] = None
+        self.results: List[ScrapedItem] = []
+
+        self.base_url = "{{ profile.url }}"
+        self.endpoints = {{ profile.api_endpoints | tojson }}
+        self.auth_method = "{{ profile.auth_type or 'none' }}"
+        self.rate_limit = {{ config.api_engine.rate_limit_per_endpoint }}
+
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    async def start(self):
+        """Initialize HTTP client and auth"""
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=30.0,
+            headers={
+                "User-Agent": "{{ config.user_agent.pool[0] if config.user_agent.pool else 'HybridScraper/1.0' }}",
+                "Accept": "application/json",
+            }
+        )
+
+        if self.auth_method == "oauth2":
+            await self._setup_oauth2()
+        elif self.auth_method == "bearer":
+            self.client.headers["Authorization"] = "Bearer {{ config.api_engine.auth_token or '' }}"
+        elif self.auth_method == "api_key":
+            self.client.headers["X-API-Key"] = "{{ config.api_engine.api_key or '' }}"
+
+    async def _setup_oauth2(self):
+        """Setup OAuth2 client"""
+        from authlib.integrations.httpx_client import AsyncOAuth2Client
+
+        self.auth = AsyncOAuth2Client(
+            client_id="{{ config.api_engine.oauth_client_id }}",
+            client_secret="{{ config.api_engine.oauth_client_secret }}",
+            token_endpoint="{{ config.api_engine.oauth_token_url }}",
+        )
+        await self.auth.fetch_token()
+
+    async def close(self):
+        if self.client:
+            await self.client.aclose()
+        if hasattr(self, 'auth') and self.auth:
+            await self.auth.aclose()
+
+    async def scrape(self) -> List[ScrapedItem]:
+        """Scrape data from API endpoints"""
+        self.results = []
+
+        for endpoint in self.endpoints:
+            try:
+                data = await self._call_endpoint(endpoint)
+                item = self._parse_response(endpoint, data)
+                if item:
+                    self.results.append(item)
+            except Exception as e:
+                logger.error(f"Failed to call {endpoint.get('url')}: {e}")
+
+        return self.results
+
+    async def _call_endpoint(self, endpoint: Dict[str, Any]) -> Any:
+        """Call a single API endpoint"""
+        method = endpoint.get("method", "GET").upper()
+        url = endpoint.get("url", "")
+        params = endpoint.get("params", {})
+        headers = endpoint.get("headers", {})
+        body = endpoint.get("body")
+
+        response = await self.client.request(
+            method=method,
+            url=url,
+            params=params,
+            headers=headers,
+            json=body,
+        )
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            return response.json()
+        return response.text
+
+    def _parse_response(self, endpoint: Dict[str, Any], data: Any) -> Optional[Dict]:
+        """Parse API response into ScrapedItem"""
+        item = {
+            "url": endpoint.get("url", self.base_url),
+            "title": endpoint.get("name", "API Response"),
+            "content": json.dumps(data)[:5000],
+        }
+
+        # Try to extract structured data
+        if isinstance(data, dict):
+            if "data" in data and isinstance(data["data"], list):
+                items = data["data"]
+                if items:
+                    return items[0]
+            else:
+                return data
+
+        return None
+
+    async def mock_call(self, har_file: str) -> List[Dict]:
+        """Mock calls from HAR file for testing"""
+        import json
+        with open(har_file) as f:
+            har = json.load(f)
+
+        results = []
+        for entry in har.get("log", {}).get("entries", []):
+            request = entry.get("request", {})
+            response = entry.get("response", {})
+
+            item = {
+                "url": request.get("url", ""),
+                "title": request.get("method", "") + " " + request.get("url", ""),
+                "content": response.get("content", {}).get("text", "")[:5000],
+            }
+
+            content = response.get("content", {}).get("text", "")
+            if content:
+                try:
+                    item["data"] = json.loads(content)
+                except json.JSONDecodeError:
+                    pass
+
+            item["metadata"] = {
+                "status": response.get("status"),
+                "mock": True,
+            }
+
+            results.append(item)
+
+        return results
+
+
+async def main(request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    if request_data is None:
+        request_data = {}
+
+    mock_mode = request_data.get("mock_mode", False)
+    mock_har = request_data.get("mock_har")
+
+    client = {{ profile.category | capitalize }}APIClient()
+    async with client:
+        if mock_mode and mock_har:
+            results = await client.mock_call(mock_har)
+        else:
+            results = await client.scrape()
+
+    return {
+        "success": True,
+        "url": "{{ profile.url }}",
+        "data": results,
+        "engine_used": "api",
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    import json
+
+    request_file = None
+    output_file = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg == "--request" and i + 1 < len(sys.argv):
+            request_file = sys.argv[i + 1]
+        elif arg == "--output" and i + 1 < len(sys.argv):
+            output_file = sys.argv[i + 1]
+
+    if request_file:
+        with open(request_file) as f:
+            request_data = json.load(f)
+    else:
+        request_data = {}
+
+    result = asyncio.run(main(request_data))
+
+    if output_file:
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2)
+    else:
+        print(json.dumps(result, indent=2))

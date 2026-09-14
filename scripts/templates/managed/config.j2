@@ -1,0 +1,26 @@
+# Crawlee Config for {{ profile.url }}
+
+HEADLESS = {{ config.managed_engine.headless | lower }}
+BROWSER_TYPE = "{{ config.managed_engine.browser_type }}"
+MAX_REQUESTS_PER_CRAWL = {{ config.managed_engine.max_requests_per_crawl }}
+MAX_CONCURRENCY = {{ config.managed_engine.max_concurrency }}
+REQUEST_QUEUE_SIZE = {{ config.managed_engine.request_queue_size }}
+SESSION_POOL_SIZE = {{ config.managed_engine.session_pool_size }}
+SESSION_MAX_USAGE = {{ config.managed_engine.session_max_usage }}
+SESSION_MAX_AGE_HOURS = {{ config.managed_engine.session_max_age_hours }}
+
+PROXY_TIERS = {{ config.managed_engine.proxy_tiers | tojson }}
+
+BLOCKED_STATUS_CODES = {{ config.managed_engine.blocked_status_codes | tojson }}
+BLOCKED_ERROR_PATTERNS = {{ config.managed_engine.blocked_error_patterns | tojson }}
+
+PERSIST_STORAGE = {{ config.managed_engine.persist_storage | lower }}
+STORAGE_DIR = "{{ config.managed_engine.storage_dir or './storage' }}"
+
+DATASET_EXPORT = {{ config.managed_engine.dataset_export | lower }}
+KEY_VALUE_STORE_EXPORT = {{ config.managed_engine.key_value_store_export | lower }}
+
+FOLLOW_LINKS = {{ config.managed_engine.follow_links | lower }}
+LINK_SELECTOR = "{{ config.managed_engine.link_selector }}"
+
+RPM = {{ config.managed_engine.rpm }}

@@ -1,0 +1,29 @@
+# Generated configuration for {{ profile.url }}
+# Generated at: {{ timestamp }}
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+@dataclass
+class ScrapingConfig:
+    target_url: str = {{ profile.url | tojson }}
+    goal: str = {{ requirements.goal | tojson }}
+    max_pages: int = {{ requirements.max_pages }}
+    depth: int = {{ requirements.depth }}
+    output_formats: List[str] = field(default_factory=lambda: [
+    {% for fmt in requirements.output_formats %}
+        "{{ fmt.value }}",
+    {% endfor %}
+    ])
+    use_stealth: bool = {{ requirements.use_stealth }}
+    use_proxy: bool = {{ requirements.use_proxy }}
+    custom_headers: Dict[str, str] = field(default_factory=lambda: {{ requirements.custom_headers | tojson if requirements.custom_headers is not none else '{}' }})
+    custom_cookies: Dict[str, str] = field(default_factory=lambda: {{ requirements.custom_cookies | tojson if requirements.custom_cookies is not none else '{}' }})
+    wait_for_selector: Optional[str] = {{ requirements.wait_for_selector | tojson if requirements.wait_for_selector is not none else 'None' }}
+    wait_for_timeout: int = {{ requirements.wait_for_timeout }}
+    extraction_schema: Optional[Dict] = field(default_factory=lambda: {{ requirements.extraction_schema if requirements.extraction_schema is not none else 'None' }})
+    
+    # Engine-specific settings
+    engine: str = {{ engine | tojson }}
+    use_stealth: bool = {{ requirements.use_stealth }}
+    use_proxy: bool = {{ requirements.use_proxy }}

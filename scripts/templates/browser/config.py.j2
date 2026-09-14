@@ -1,0 +1,36 @@
+# Browser Engine Config for {{ profile.url }}
+
+BROWSER_TYPE = "chromium"
+HEADLESS = {{ config.browser_engine.headless | lower }}
+STEALTH_MODE = {{ config.browser_engine.stealth_mode | lower }}
+
+# Context settings
+VIEWPORT = {"width": 1920, "height": 1080}
+USER_AGENT = "{{ config.user_agent.pool[0] if config.user_agent.pool else 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }}"
+LOCALE = "en-US"
+TIMEZONE_ID = "America/New_York"
+
+# Navigation
+WAIT_UNTIL = "{{ config.browser_engine.wait_until }}"
+NAVIGATION_TIMEOUT = {{ config.browser_engine.navigation_timeout }}
+WAIT_FOR_SELECTOR = "{{ config.browser_engine.wait_for_selector or '' }}"
+
+# Infinite scroll
+INFINITE_SCROLL = {{ config.browser_engine.infinite_scroll | lower }}
+INFINITE_SCROLL_MAX_ITERATIONS = {{ config.browser_engine.infinite_scroll_max_iterations }}
+INFINITE_SCROLL_WAIT_MS = {{ config.browser_engine.infinite_scroll_wait_ms }}
+
+# Resource blocking
+RESOURCE_BLOCKING = {{ config.browser_engine.resource_blocking | tojson }}
+
+# Stealth
+STEALTH_CONFIG = {{ config.browser_engine.stealth_config | tojson }}
+
+# Browser pool (for managed execution)
+POOL_MIN = {{ config.browser_engine.pool_min }}
+POOL_MAX = {{ config.browser_engine.pool_max }}
+POOL_IDLE_TIMEOUT_MS = {{ config.browser_engine.pool_idle_timeout_ms }}
+POOL_RECYCLE_AFTER_PAGES = {{ config.browser_engine.pool_recycle_after_pages }}
+
+# Interaction sequences
+INTERACTION_SEQUENCES = {{ config.browser_engine.interaction_sequences | tojson }}

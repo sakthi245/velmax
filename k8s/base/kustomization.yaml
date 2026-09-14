@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- configmaps.yaml
+- secrets.yaml
+- pvcs.yaml
+- api-deployment.yaml
+- worker-deployment.yaml
+- hpa.yaml
+- network-policies.yaml
+- rbac.yaml
+- backup-cronjob.yaml
+- logging.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: hybrid-scraper
+
+commonAnnotations:
+  app.kubernetes.io/version: "0.3.0"

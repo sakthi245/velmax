@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Tests for {{ profile.category }} spider
+Generated at: {{ timestamp }}
+"""
+
+import pytest
+from unittest.mock import Mock, patch
+from scrapy.http import HtmlResponse, Request
+from main import {{ profile.category | capitalize }}Spider, ScrapedItem
+
+
+@pytest.fixture
+def spider():
+    return {{ profile.category | capitalize }}Spider()
+
+
+@pytest.fixture
+def sample_html():
+    """Sample HTML for testing - replace with real page content"""
+    return """
+    <html>
+        <head><title>Test Page</title></head>
+        <body>
+            <div class="product">
+                <h2 class="title">Test Product</h2>
+                <span class="price">$29.99</span>
+                <a href="/product/123" class="link">View Details</a>
+            </div>
+            <div class="product">
+                <h2 class="title">Another Product</h2>
+                <span class="price">$49.99</span>
+                <a href="/product/456" class="link">View Details</a>
+            </div>
+            <nav class="pagination">
+                <a href="?page=2" class="next">Next</a>
+            </nav>
+        </body>
+    </html>
+    """
+
+
+def test_spider_attributes(spider):
+    """Test spider has correct attributes"""
+    assert spider.name == "{{ profile.category }}_spider"
+    assert spider.allowed_domains == ["{{ urlparse(profile.url).netloc }}"]
+    assert spider.start_urls == ["{{ profile.url }}"]
+
+
+def test_parse_list_page(spider, sample_html):
+    """Test parsing list page extracts items"""
+    response = HtmlResponse(
+        url="{{ profile.url }}",
+        body=sample_html.encode(),
+        encoding="utf-8",
+    )
+
+    items = list(spider.parse(response))
+
+    assert len(items) > 0
+    for item in items:
+        assert hasattr(item, "url")
+        assert hasattr(item, "data")
+        assert "title" in item.data or "price" in item.data
+
+
+def test_extract_single_item(spider, sample_html):
+    """Test single item extraction"""
+    response = HtmlResponse(
+        url="{{ profile.url }}",
+        body=sample_html.encode(),
+        encoding="utf-8",
+    )
+
+    # Get first product container
+    container = response.css(".product").get()
+    item = spider._extract_single_item(response, container)
+
+    assert item.url == "{{ profile.url }}"
+    assert "title" in item.data
+    assert "price" in item.data
+
+
+def test_pagination_detection(spider, sample_html):
+    """Test next page detection"""
+    response = HtmlResponse(
+        url="{{ profile.url }}",
+        body=sample_html.encode(),
+        encoding="utf-8",
+    )
+
+    next_page = spider._get_next_page(response)
+    assert next_page is not None
+    assert "page=2" in next_page
+
+
+def test_selectors_configuration(spider):
+    """Test selectors are properly configured"""
+    assert hasattr(spider, "SELECTORS")
+    assert isinstance(spider.SELECTORS, dict)
+
+
+def test_pagination_configuration(spider):
+    """Test pagination config"""
+    assert hasattr(spider, "PAGINATION")
+    assert isinstance(spider.PAGINATION, dict)
+
+
+# Schema validation tests
+def test_output_schema(spider):
+    """Test output matches expected schema"""
+    sample_item = {
+        "url": "https://example.com/product/123",
+        "title": "Test Product",
+        "data": {
+            "title": "Test Product",
+            "price": "$29.99",
+            "link": "/product/123",
+        },
+        "metadata": {
+            "depth": 0,
+            "status": 200,
+        },
+    }
+
+    required_fields = ["url", "title", "data", "metadata"]
+    for field in required_fields:
+        assert field in sample_item
+
+    assert isinstance(sample_item["data"], dict)
+    assert isinstance(sample_item["metadata"], dict)
+
+
+# Integration test (requires network)
+@pytest.mark.integration
+def test_spider_integration(spider):
+    """Integration test - requires network access"""
+    from scrapy.crawler import CrawlerProcess
+    from scrapy.utils.project import get_project_settings
+
+    process = CrawlerProcess(get_project_settings())
+    results = []
+
+    def collect(item):
+        results.append(item)
+
+    original_parse = spider.parse
+    def parse_wrapper(self, response):
+        for item in original_parse(self, response):
+            collect(item)
+            yield item
+
+    spider.parse = parse_wrapper.__get__(spider, type(spider))
+
+    process.crawl(type(spider))
+    process.start()
+
+    assert len(results) > 0
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

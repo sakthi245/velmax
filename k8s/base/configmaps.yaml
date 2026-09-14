@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hybrid-scraper-config
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: config
+data:
+  config.yaml: |
+    mode: auto
+    engine_priority: [crawlee, firecrawl, playwright, scrapy]
+    fallback:
+      on_limit_reached: true
+      log_fallbacks: true
+    robots:
+      user_agent: "HybridScraper/1.0 (+https://github.com/hybrid-scraper)"
+      respect: true
+    limits:
+      timeout_seconds: 60
+      requests_per_second: 2
+      max_redirects: 5
+    output:
+      directory: /data/output
+    domain_overrides: {}
+    
+    # Distributed mode settings
+    distributed:
+      enabled: true
+      worker_concurrency: 5
+      queue_host: rabbitmq
+      queue_port: 5672
+      redis_url: redis://redis:6379
+      postgres_dsn: postgresql://scraper:scraper@postgres:5432/scraper_distributed
+      checkpoint_enabled: true
+      checkpoint_interval_pages: 100
+      checkpoint_interval_seconds: 300
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hybrid-scraper-engines-config
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: config
+data:
+  engines.yaml: |
+    engines:
+      firecrawl:
+        enabled: true
+        api_url: "http://firecrawl:3002"
+        api_key: "local-dev"
+        default_options:
+          formats: ["markdown", "html"]
+          only_main_content: true
+          proxy: "auto"
+          timeout: 120000
+        failure_threshold: 5
+        recovery_timeout: 60
+        health_check_interval: 30
+
+      crawlee:
+        enabled: true
+        use_browser: true
+        headless: true
+        browser_type: "chromium"
+        proxy_tiers:
+          - [null]
+        session_settings:
+          max_usage_count: 15
+          max_age_hours: 2
+          blocked_status_codes: [403, 429, 503]
+          blocked_error_patterns: ["captcha", "access denied", "blocked", "rate limit"]
+        max_pool_size: 50
+        rpm: 120
+        concurrency: 10
+        follow_links: false
+        failure_threshold: 3
+        recovery_timeout: 30
+
+      playwright:
+        enabled: true
+        headless: true
+        browser: "chromium"
+        context_options:
+          viewport:
+            width: 1920
+            height: 1080
+        failure_threshold: 3
+        recovery_timeout: 30
+
+      scrapy:
+        enabled: true
+        settings:
+          DOWNLOAD_DELAY: 1
+          CONCURRENT_REQUESTS: 16
+          AUTOTHROTTLE_ENABLED: true
+          AUTOTHROTTLE_START_DELAY: 1
+          AUTOTHROTTLE_MAX_DELAY: 60
+        failure_threshold: 5
+        recovery_timeout: 60
+
+    routing:
+      default: "crawlee"
+      rules:
+        - pattern: "*.pdf"
+          engine: "firecrawl"
+          reason: "Better PDF parsing and text extraction"
+        - pattern: "*/api/*"
+          engine: "scrapy"
+          reason: "Native JSON handling, no browser needed"
+        - pattern: "*.json"
+          engine: "scrapy"
+          reason: "Native JSON handling, no browser needed"
+        - domain: "linkedin.com"
+          engine: "firecrawl"
+          reason: "Strong anti-bot handling, login detection"
+        - domain: "twitter.com"
+          engine: "firecrawl"
+          reason: "Heavy JS + aggressive anti-bot"
+        - domain: "x.com"
+          engine: "firecrawl"
+          reason: "Heavy JS + aggressive anti-bot"
+        - domain: "facebook.com"
+          engine: "firecrawl"
+          reason: "Heavy anti-bot, requires login"
+        - domain: "instagram.com"
+          engine: "firecrawl"
+          reason: "Heavy anti-bot, requires login"
+        - requires_js: true
+          engine: "crawlee"
+          reason: "Managed browser pool with session persistence"
+        - requires_auth: true
+          engine: "playwright"
+          reason: "Persistent context for authenticated sessions"
+        - path_prefix: "/login"
+          engine: "playwright"
+          reason: "Login flows need full browser control"
+        - path_prefix: "/auth"
+          engine: "playwright"
+          reason: "Auth flows need full browser control"
+
+    metrics:
+      enabled: true
+      port: 9090
+      path: "/metrics"

@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""
+Tests for {{ profile.category }} Crawlee crawler
+"""
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+from main import {{ profile.category | capitalize }}CrawleeCrawler, ScrapedItem
+
+
+@pytest.fixture
+def crawler():
+    return {{ profile.category | capitalize }}CrawleeCrawler()
+
+
+@pytest.mark.asyncio
+async def test_crawler_initialization(crawler):
+    """Test crawler initializes correctly"""
+    with patch("crawlee.crawlers.PlaywrightCrawler") as mock_crawler_class:
+        mock_crawler = AsyncMock()
+        mock_crawler_class.return_value = mock_crawler
+
+        await crawler.initialize()
+
+        assert crawler.crawler is not None
+        mock_crawler_class.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_method(crawler):
+    """Test run method"""
+    with patch("crawlee.crawlers.PlaywrightCrawler") as mock_crawler_class:
+        mock_crawler = AsyncMock()
+        mock_crawler_class.return_value = mock_crawler
+
+        await crawler.initialize()
+        await crawler.run(["https://example.com"])
+
+        mock_crawler.run.assert_called_once_with(["https://example.com"])
+
+
+@pytest.mark.asyncio
+async def test_get_results(crawler):
+    """Test getting results"""
+    crawler.results = [
+        ScrapedItem(url="https://example.com", title="Test", data={"name": "test"}),
+    ]
+
+    results = await crawler.get_results()
+    assert len(results) == 1
+    assert results[0].title == "Test"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

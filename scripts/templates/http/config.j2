@@ -1,0 +1,97 @@
+# Generated Scrapy Settings for {{ profile.url }}
+# Generated at: {{ timestamp }}
+
+import os
+
+BOT_NAME = "{{ profile.category }}_spider"
+
+SPIDER_MODULES = ["{{ profile.category }}_spider"]
+NEWSPIDER_MODULE = "{{ profile.category }}_spider"
+
+# Obey robots.txt
+ROBOTSTXT_OBEY = {{ config.domain_rules.respect_robots_txt | lower }}
+
+# User agent
+USER_AGENT = "{{ config.user_agent.pool[0] if config.user_agent.pool else 'HybridScraper/1.0' }}"
+
+# Download settings
+DOWNLOAD_DELAY = {{ config.http_engine.autothrottle_start_delay }}
+CONCURRENT_REQUESTS = {{ config.concurrency.max_concurrent_requests }}
+CONCURRENT_REQUESTS_PER_DOMAIN = {{ config.concurrency.max_concurrent_per_domain }}
+
+# AutoThrottle
+AUTOTHROTTLE_ENABLED = {{ config.http_engine.autothrottle_enabled | lower }}
+AUTOTHROTTLE_START_DELAY = {{ config.http_engine.autothrottle_start_delay }}
+AUTOTHROTTLE_MAX_DELAY = {{ config.http_engine.autothrottle_max_delay }}
+AUTOTHROTTLE_TARGET_CONCURRENCY = {{ config.http_engine.autothrottle_target_concurrency }}
+
+# Cookies
+COOKIES_ENABLED = {{ config.session_config.persist_cookies | lower }}
+
+# Default headers
+DEFAULT_REQUEST_HEADERS = {{ config.http_engine.default_headers | tojson }}
+
+# Retry settings
+RETRY_ENABLED = True
+RETRY_TIMES = {{ config.retry_policy.max_attempts }}
+RETRY_HTTP_CODES = {{ config.retry_policy.retryable_status_codes | tojson }}
+
+# Download timeout
+DOWNLOAD_TIMEOUT = {{ config.request_timeout.read }}
+
+# Depth limit
+DEPTH_LIMIT = {{ config.domain_rules.max_depth }}
+DEPTH_PRIORITY = 1
+
+# Item pipelines
+ITEM_PIPELINES = {
+    "scrapy.pipelines.files.FilesPipeline": 1,
+    "scrapy.pipelines.images.ImagesPipeline": 2,
+}
+
+# Output feeds
+FEEDS = {
+    "output/{{ profile.category }}_%(time)s.jsonl": {
+        "format": "jsonlines",
+        "encoding": "utf8",
+        "store_empty": False,
+    },
+}
+
+# Logging
+LOG_LEVEL = "{{ config.observability.log_level }}"
+LOG_FILE = "logs/{{ profile.category }}.log"
+
+# Extensions
+EXTENSIONS = {
+    "scrapy.extensions.telnet.TelnetConsole": None,
+    "scrapy.extensions.closespider.CloseSpider": 500,
+}
+
+CLOSESPIDER_PAGECOUNT = {{ config.domain_rules.max_pages_per_domain }}
+CLOSESPIDER_ITEMCOUNT = 10000
+
+# Middleware
+DOWNLOADER_MIDDLEWARES = {
+    "scrapy.downloadermiddlewares.retry.RetryMiddleware": 550,
+    "scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware": 750,
+}
+
+# Proxy (if configured)
+{% if config.proxy_config.enabled %}
+PROXY_LIST = {{ config.proxy_config.proxy_list | tojson }}
+ROTATING_PROXY_LIST = {{ config.proxy_config.proxy_list | tojson }}
+{% endif %}
+
+# Cache
+HTTPCACHE_ENABLED = {{ config.http_engine.http_cache_enabled | lower }}
+{% if config.http_engine.http_cache_enabled %}
+HTTPCACHE_EXPIRATION_SECS = {{ config.http_engine.http_cache_ttl }}
+HTTPCACHE_DIR = "{{ config.http_engine.http_cache_dir or 'httpcache' }}"
+{% endif %}
+
+# Sitemap
+SITEMAP_ENABLED = {{ config.http_engine.sitemap_enabled | lower }}
+{% if config.http_engine.sitemap_enabled %}
+SITEMAP_MAX_URLS = {{ config.http_engine.sitemap_max_urls }}
+{% endif %}

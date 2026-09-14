@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""
+Generated Hybrid Scraper for {{ profile.url }}
+Combines multiple engines: HTTP for lists, Browser for details, API for data
+"""
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, List, Optional, AsyncIterator
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class EngineType(Enum):
+    HTTP = "http"
+    BROWSER = "browser"
+    API = "api"
+
+
+@dataclass
+class ScrapedItem:
+    url: str
+    title: str = ""
+    content: str = ""
+    data: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+        if self.metadata is None:
+            self.metadata = {}
+
+
+@dataclass
+class PageTask:
+    url: str
+    engine: EngineType
+    page_type: str
+    parent_url: Optional[str] = None
+    depth: int = 0
+    priority: int = 0
+
+
+class {{ profile.category | capitalize }}HybridScraper:
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+        self.http_engine = None
+        self.browser_engine = None
+        self.api_engine = None
+        self.results: List[ScrapedItem] = []
+        self.task_queue: List[PageTask] = []
+
+        # Engine configs
+        self.http_config = {{ config.http_engine | tojson }}
+        self.browser_config = {{ config.browser_engine | tojson }}
+        self.api_config = {{ config.api_engine | tojson }}
+
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    async def initialize(self):
+        """Initialize all engines"""
+        # Import engines dynamically
+        from scripts.templates.http.main import {{ profile.category | capitalize }}Spider as HttpSpider
+        from scripts.templates.browser.main import {{ profile.category | capitalize }}BrowserScraper as BrowserScraper
+        from scripts.templates.api.main import {{ profile.category | capitalize }}APIClient as APIClient
+
+        self.http_engine = HttpSpider()
+        self.browser_engine = BrowserScraper()
+        self.api_engine = APIClient()
+
+        await self.browser_engine.start()
+        await self.api_engine.start()
+
+    async def close(self):
+        if self.browser_engine:
+            await self.browser_engine.close()
+        if self.api_engine:
+            await self.api_engine.close()
+
+    async def crawl(self, start_url: str, strategy: Dict[str, Any]) -> AsyncIterator[ScrapedItem]:
+        """Crawl using hybrid strategy"""
+        self.task_queue = [
+            PageTask(
+                url=start_url,
+                engine=EngineType(strategy.get("list_engine", "http")),
+                page_type="list",
+                depth=0,
+            )
+        ]
+
+        while self.task_queue and len(self.results) < {{ config.domain_rules.max_pages_per_domain }}:
+            # Sort by priority
+            self.task_queue.sort(key=lambda t: t.priority, reverse=True)
+            task = self.task_queue.pop(0)
+
+            try:
+                if task.engine == EngineType.HTTP:
+                    async for item in self._crawl_http(task):
+                        yield item
+                elif task.engine == EngineType.BROWSER:
+                    async for item in self._crawl_browser(task):
+                        yield item
+                elif task.engine == EngineType.API:
+                    async for item in self._crawl_api(task):
+                        yield item
+            except Exception as e:
+                logger.error(f"Failed to crawl {task.url} with {task.engine.value}: {e}")
+
+    async def _crawl_http(self, task: PageTask) -> AsyncIterator[ScrapedItem]:
+        """Crawl using HTTP engine"""
+        # Use Scrapy or httpx
+        import httpx
+        from parsel import Selector
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(task.url, timeout=30.0)
+            response.raise_for_status()
+
+            selector = Selector(response.text)
+
+            # Extract items from list page
+            items = selector.css(".product, .item, .listing")
+            for item_el in items:
+                data = {}
+                for field, sel in {{ selectors | tojson }}.items():
+                    if isinstance(sel, list):
+                        sel = sel[0] if sel else {}
+                    selector_str = sel.get("selector", "")
+                    attr = sel.get("attribute")
+                    val = item_el.css(selector_str).get()
+                    if val and attr:
+                        val = Selector(val).css("*::attr(" + attr + ")").get()
+                    if val:
+                        data[field] = val.strip()
+
+                if data:
+                    yield ScrapedItem(
+                        url=task.url,
+                        title=selector.css("title::text").get() or "",
+                        data=data,
+                        metadata={"engine": "http", "page_type": "list"},
+                    )
+
+            # Find detail links and add to queue
+            detail_links = selector.css("a::attr(href)").getall()
+            for link in detail_links[:10]:  # Limit
+                full_url = response.urljoin(link)
+                self.task_queue.append(PageTask(
+                    url=full_url,
+                    engine=EngineType(strategy.get("detail_engine", "browser")),
+                    page_type="detail",
+                    parent_url=task.url,
+                    depth=task.depth + 1,
+                ))
+
+    async def _crawl_browser(self, task: PageTask) -> AsyncIterator[ScrapedItem]:
+        """Crawl using Browser engine"""
+        from scripts.templates.browser.main import {{ profile.category | capitalize }}BrowserScraper
+
+        scraper = {{ profile.category | capitalize }}BrowserScraper()
+        async with scraper:
+            results = await scraper.scrape(task.url)
+            for r in results:
+                r.metadata = r.metadata or {}
+                r.metadata["engine"] = "browser"
+                r.metadata["page_type"] = task.page_type
+                yield r
+
+    async def _crawl_api(self, task: PageTask) -> AsyncIterator[ScrapedItem]:
+        """Crawl using API engine"""
+        from scripts.templates.api.main import {{ profile.category | capitalize }}APIClient
+
+        async with {{ profile.category | capitalize }}APIClient() as client:
+            results = await client.scrape()
+            for r in results:
+                r.metadata = r.metadata or {}
+                r.metadata["engine"] = "api"
+                r.metadata["page_type"] = task.page_type
+                yield r
+
+
+async def main(request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    if request_data is None:
+        request_data = {}
+
+    url = request_data.get("url", "{{ profile.url }}")
+    strategy = request_data.get("strategy", {
+        "list_engine": "http",
+        "detail_engine": "browser",
+    })
+
+    scraper = {{ profile.category | capitalize }}HybridScraper()
+    async with scraper:
+        results = []
+        async for item in scraper.crawl(url, strategy):
+            results.append(item)
+
+    return {
+        "success": True,
+        "url": url,
+        "data": [asdict(r) for r in results],
+        "engine_used": "hybrid",
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    import json
+
+    request_file = None
+    output_file = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg == "--request" and i + 1 < len(sys.argv):
+            request_file = sys.argv[i + 1]
+        elif arg == "--output" and i + 1 < len(sys.argv):
+            output_file = sys.argv[i + 1]
+
+    if request_file:
+        with open(request_file) as f:
+            request_data = json.load(f)
+    else:
+        request_data = {}
+
+    result = asyncio.run(main(request_data))
+
+    if output_file:
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2)
+    else:
+        print(json.dumps(result, indent=2))

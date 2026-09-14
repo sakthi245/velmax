@@ -1,0 +1,18 @@
+mode: free_only # auto | free_only | cloud_preferred
+engine_priority: [crawlee, firecrawl, playwright, scrapy]
+fallback:
+  on_limit_reached: true
+  log_fallbacks: true
+robots:
+  user_agent: "CompliantFreeFirstScraper/0.1 (+contact@example.invalid)"
+  respect: true
+limits:
+  timeout_seconds: 60
+  requests_per_second: 2
+  max_redirects: 5
+output:
+  directory: output
+domain_overrides: {}
+
+# Engine configurations are loaded from config/engines.yaml
+# This file only contains global settings

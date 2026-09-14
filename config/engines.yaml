@@ -1,0 +1,182 @@
+engines:
+  firecrawl:
+    enabled: true
+    api_url: "http://localhost:3002"
+    api_key: "local-dev"
+    default_options:
+      formats: ["markdown", "html"]
+      only_main_content: true
+      proxy: "auto"
+      timeout: 120000
+    failure_threshold: 5
+    recovery_timeout: 60
+    health_check_interval: 30
+
+  crawlee:
+    enabled: true
+    use_browser: true
+    headless: true
+    browser_type: "chromium"
+    proxy_tiers:
+      - [null]
+    session_settings:
+      max_usage_count: 15
+      max_age_hours: 2
+      blocked_status_codes: [403, 429, 503]
+      blocked_error_patterns: ["captcha", "access denied", "blocked", "rate limit"]
+    max_pool_size: 50
+    rpm: 120
+    concurrency: 10
+    follow_links: false
+    failure_threshold: 3
+    recovery_timeout: 30
+
+  playwright:
+    enabled: true
+    headless: true
+    browser: "chromium"
+    context_options:
+      viewport:
+        width: 1920
+        height: 1080
+    failure_threshold: 3
+    recovery_timeout: 30
+
+  scrapy:
+    enabled: true
+    settings:
+      DOWNLOAD_DELAY: 1
+      CONCURRENT_REQUESTS: 16
+      AUTOTHROTTLE_ENABLED: true
+      AUTOTHROTTLE_START_DELAY: 1
+      AUTOTHROTTLE_MAX_DELAY: 60
+    failure_threshold: 5
+    recovery_timeout: 60
+
+# Search engines (top-level for UniversalConfig)
+tinyfish_search:
+  enabled: true
+  api_key: "${TINYFISH_API_KEY}"
+  base_url: "https://api.search.tinyfish.ai"
+  timeout: 30.0
+  max_results_per_query: 10
+  rate_limit_delay: 2.0
+  max_retries: 3
+  backoff_factor: 2.0
+  verify_ssl: true
+  default_location: "US"
+  default_language: "en"
+  default_purpose: ""
+  default_domain_type: "web"
+  include_domains: ""
+  exclude_domains: ""
+  recency_minutes: 0
+  page: 0
+  include_thumbnail: false
+  fetch: false
+
+serpapi_search:
+  enabled: true
+  api_key: "{SERP_API_KEY}"
+  base_url: "https://serpapi.com/search"
+  timeout: 30.0
+  max_results_per_query: 10
+  rate_limit_delay: 1.0
+  max_retries: 3
+  backoff_factor: 2.0
+  verify_ssl: true
+  engine: "google"
+  location: "India"
+  language: "en"
+  gl: "in"
+  hl: "hi"
+  google_domain: "google.co.in"
+  safe_search: true
+  num_results: 10
+  device: "desktop"
+
+query_expander:
+  enabled: true
+  api_key: "${GROQ_API_KEY}"
+  model: "openai/gpt-oss-20b"
+  fallback_models:
+    - "qwen/qwen3.8-27b"
+    - "qwen/qwen3.6-27b"
+  max_queries_per_goal: 7
+  temperature: 0.3
+  max_tokens: 1000
+  timeout: 30.0
+  rate_limit_retry: true
+
+relevance_ranker:
+  enabled: true
+  api_key: "${GROQ_API_KEY}"
+  model: "openai/gpt-oss-20b"
+  fallback_models:
+    - "qwen/qwen3.8-27b"
+  temperature: 0.1
+  max_tokens: 500
+  max_results_to_rank: 30
+
+openrouter:
+  enabled: true
+  api_key: "${OPENROUTER_API_KEY}"
+  base_url: "https://openrouter.ai/api/v1"
+  model: "auto"
+  max_tokens: 2000
+  temperature: 0.3
+
+deduplication:
+  ttl_days_dev: 1
+  ttl_days_prod: 7
+  enabled: true
+
+geo_redirect:
+  enabled: true
+  use_llm_detection: true
+
+routing:
+  default: "managed"
+  rules:
+    - pattern: "*.pdf"
+      engine: "cloud"
+      reason: "Better PDF parsing and text extraction"
+    - pattern: "*/api/*"
+      engine: "http"
+      reason: "Native JSON handling, no browser needed"
+    - pattern: "*.json"
+      engine: "http"
+      reason: "Native JSON handling, no browser needed"
+    - domain: "linkedin.com"
+      engine: "cloud"
+      reason: "Strong anti-bot handling, login detection"
+    - domain: "twitter.com"
+      engine: "cloud"
+      reason: "Heavy JS + aggressive anti-bot"
+    - domain: "x.com"
+      engine: "cloud"
+      reason: "Heavy JS + aggressive anti-bot"
+    - domain: "facebook.com"
+      engine: "cloud"
+      reason: "Heavy anti-bot, requires login"
+    - domain: "instagram.com"
+      engine: "cloud"
+      reason: "Heavy anti-bot, requires login"
+    - requires_js: true
+      engine: "managed"
+      reason: "Managed browser pool with session persistence"
+    - requires_auth: true
+      engine: "browser"
+      reason: "Persistent context for authenticated sessions"
+    - path_prefix: "/login"
+      engine: "browser"
+      reason: "Login flows need full browser control"
+    - path_prefix: "/auth"
+      engine: "browser"
+      reason: "Auth flows need full browser control"
+
+# Prometheus metrics configuration
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"

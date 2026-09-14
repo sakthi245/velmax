@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""
+Generated Playwright Script for {{ profile.url }}
+Generated at: {{ timestamp }}
+Profile: {{ profile.category }} | Anti-bot: {{ profile.anti_bot_level }}
+"""
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, List, Optional
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScrapedItem:
+    url: str
+    title: str = ""
+    content: str = ""
+    data: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+        if self.metadata is None:
+            self.metadata = {}
+
+
+class {{ profile.category | capitalize }}BrowserScraper:
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
+        self.results: List[ScrapedItem] = []
+
+        # Browser config from profile
+        self.headless = {{ config.browser_engine.headless | lower }}
+        self.stealth = {{ config.browser_engine.stealth_mode | lower }}
+        self.timeout = {{ config.browser_engine.navigation_timeout }}
+        self.wait_until = "{{ config.browser_engine.wait_until }}"
+
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    async def start(self):
+        """Start browser with stealth if enabled"""
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(
+            headless=self.headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ] if self.stealth else [],
+        )
+
+        # Create context with realistic viewport
+        self.context = await self.browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="{{ config.user_agent.pool[0] if config.user_agent.pool else 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }}",
+            locale="en-US",
+            timezone_id="America/New_York",
+        )
+
+        if self.stealth:
+            await self._apply_stealth()
+
+        self.page = await self.context.new_page()
+
+    async def _apply_stealth(self):
+        """Apply stealth scripts to avoid detection"""
+        stealth_script = """
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        """
+        await self.context.add_init_script(stealth_script)
+
+    async def close(self):
+        """Close browser and cleanup"""
+        if self.page:
+            await self.page.close()
+        if self.context:
+            await self.context.close()
+        if self.browser:
+            await self.browser.close()
+        if hasattr(self, 'playwright'):
+            await self.playwright.stop()
+
+    async def scrape(self, url: str) -> List[ScrapedItem]:
+        """Scrape a single URL"""
+        self.results = []
+
+        try:
+            await self.page.goto(url, wait_until=self.wait_until, timeout=self.timeout)
+
+            # Wait for selector if configured
+            wait_selector = "{{ config.browser_engine.wait_for_selector or '' }}"
+            if wait_selector:
+                await self.page.wait_for_selector(wait_selector, timeout=self.timeout)
+
+            # Scroll for infinite scroll if needed
+            if {{ config.browser_engine.infinite_scroll | lower }}:
+                await self._infinite_scroll()
+
+            # Extract data
+            items = await self._extract_data()
+            self.results.extend(items)
+
+        except Exception as e:
+            logger.error(f"Scraping failed for {url}: {e}")
+            raise
+
+        return self.results
+
+    async def _infinite_scroll(self):
+        """Handle infinite scroll"""
+        max_iterations = {{ config.browser_engine.infinite_scroll_max_iterations }}
+        wait_ms = {{ config.browser_engine.infinite_scroll_wait_ms }}
+
+        for i in range(max_iterations):
+            await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(wait_ms / 1000)
+
+    async def _extract_data(self) -> List[ScrapedItem]:
+        """Extract data using profile selectors"""
+        items = []
+
+        # Get page content
+        html = await self.page.content()
+        title = await self.page.title()
+
+        # Extract using JavaScript for better selector support
+        selectors = {{ selectors | tojson }}
+
+        for field_name, selector_config in selectors.items():
+            if isinstance(selector_config, list):
+                selector_config = selector_config[0] if selector_config else {}
+
+            sel = selector_config.get("selector", "")
+            attr = selector_config.get("attribute")
+            multiple = selector_config.get("multiple", False)
+
+            try:
+                if multiple:
+                    elements = await self.page.query_selector_all(sel)
+                    values = []
+                    for el in elements:
+                        if attr:
+                            val = await el.get_attribute(attr)
+                        else:
+                            val = await el.inner_text()
+                        if val:
+                            values.append(val.strip())
+                    # Store in first item or create new
+                    if items:
+                        items[0].data[field_name] = values
+                    else:
+                        item = ScrapedItem(url=self.page.url, title=title)
+                        item.data[field_name] = values
+                        items.append(item)
+                else:
+                    el = await self.page.query_selector(sel)
+                    if el:
+                        if attr:
+                            val = await el.get_attribute(attr)
+                        else:
+                            val = await el.inner_text()
+                        if items:
+                            items[0].data[field_name] = val.strip() if val else ""
+                        else:
+                            item = ScrapedItem(url=self.page.url, title=title)
+                            item.data[field_name] = val.strip() if val else ""
+                            items.append(item)
+            except Exception as e:
+                logger.warning(f"Failed to extract {field_name}: {e}")
+
+        if not items:
+            items.append(ScrapedItem(
+                url=self.page.url,
+                title=title,
+                content=html[:5000],
+            ))
+
+        for item in items:
+            item.metadata = {
+                "scraped_at": datetime.utcnow().isoformat(),
+                "engine": "playwright",
+            }
+
+        return items
+
+    async def interact(self, sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Execute interaction sequence"""
+        results = []
+        for step in sequence:
+            action = step.get("action")
+            selector = step.get("selector")
+            wait_ms = step.get("wait_ms", 0)
+
+            try:
+                if action == "click":
+                    await self.page.click(selector)
+                elif action == "fill":
+                    await self.page.fill(selector, step.get("text", ""))
+                elif action == "hover":
+                    await self.page.hover(selector)
+                elif action == "wait":
+                    await asyncio.sleep(wait_ms / 1000)
+                elif action == "scroll":
+                    await self.page.evaluate(f"window.scrollBy(0, {step.get('delta_y', 500)})")
+
+                if wait_ms:
+                    await asyncio.sleep(wait_ms / 1000)
+
+                results.append({"action": action, "success": True})
+            except Exception as e:
+                results.append({"action": action, "success": False, "error": str(e)})
+
+        return {"success": all(r["success"] for r in results), "steps": results}
+
+
+async def main(request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Entry point"""
+    if request_data is None:
+        request_data = {}
+
+    url = request_data.get("url", "{{ profile.url }}")
+    goal = request_data.get("goal", "")
+
+    scraper = {{ profile.category | capitalize }}BrowserScraper()
+    async with scraper:
+        results = await scraper.scrape(url)
+
+    return {
+        "success": True,
+        "url": url,
+        "data": [asdict(r) for r in results],
+        "engine_used": "playwright",
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    import json
+
+    request_file = None
+    output_file = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg == "--request" and i + 1 < len(sys.argv):
+            request_file = sys.argv[i + 1]
+        elif arg == "--output" and i + 1 < len(sys.argv):
+            output_file = sys.argv[i + 1]
+
+    if request_file:
+        with open(request_file) as f:
+            request_data = json.load(f)
+    else:
+        request_data = {}
+
+    result = asyncio.run(main(request_data))
+
+    if output_file:
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2)
+    else:
+        print(json.dumps(result, indent=2))
