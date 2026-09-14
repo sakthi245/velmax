@@ -1,0 +1,171 @@
+services:
+  # Firecrawl API
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    container_name: firecrawl-api
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env.firecrawl
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3002
+      - ENV=local
+      - HARNESS_STARTUP_TIMEOUT_MS=180000
+      - USE_DB_AUTHENTICATION=false
+      - NUQ_BACKEND=pg
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+      - CRAWL_CONCURRENT_REQUESTS=1
+      - MAX_CONCURRENT_JOBS=1
+      - BROWSER_POOL_SIZE=1
+      - NUM_WORKERS_PER_QUEUE=1
+      - NUQ_WORKER_CONCURRENCY=1
+      - NUQ_PREFETCH_COUNT=1
+      - NUQ_NUM_WORKERS=1
+      - EXTRACT_WORKER_CONCURRENCY=1
+      - PREFETCH_WORKER_CONCURRENCY=1
+      - RECONCILER_WORKER_CONCURRENCY=1
+      - NUQ_WORKERS_DISABLED=true
+      - EXTRACT_WORKERS_DISABLED=true
+      - PREFETCH_WORKERS_DISABLED=true
+      - RECONCILER_WORKERS_DISABLED=true
+      - QUEUE_WORKERS_DISABLED=true
+      - OPENAI_BASE_URL=https://api.groq.com/openai/v1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=groq/compound
+      - REDIS_URL=redis://redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://redis:6379
+      - NUQ_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - PLAYWRIGHT_MICROSERVICE_URL=http://playwright:3000/scrape
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      playwright:
+        condition: service_healthy
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3002/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # Playwright browser service (Firecrawl's own playwright microservice)
+  playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    container_name: firecrawl-playwright
+    env_file:
+      - .env.firecrawl
+    ports:
+      - "3000:3000"
+    user: root
+    environment:
+      - PORT=3000
+      - BROWSER_POOL_SIZE=1
+      - HEADLESS=true
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    command: >
+      sh -c "rm -rf /ms-playwright && ln -s /usr/local/share/playwright /ms-playwright; node dist/api.js"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { if (res.statusCode === 200) process.exit(0); else process.exit(1); }).on('error', () => process.exit(1));"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # Redis for caching & rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: firecrawl-redis
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - firecrawl-redis:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Firecrawl's dedicated Postgres image (ships with the NUQ queue schema)
+  postgres:
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    container_name: firecrawl-postgres
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+    volumes:
+      - firecrawl-postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # RabbitMQ for queue system
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: firecrawl-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_MEMORY_HIGH_WATERMARK=0.4
+    volumes:
+      - firecrawl-rabbitmq:/var/lib/rabbitmq
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  firecrawl-redis:
+  firecrawl-postgres:
+  firecrawl-rabbitmq:
+
+networks:
+  default:
+    name: firecrawl-network

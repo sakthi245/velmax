@@ -1,0 +1,270 @@
+version: '3.8'
+
+services:
+  # Distributed RabbitMQ for task queue
+  rabbitmq-distributed:
+    image: rabbitmq:3.12-management-alpine
+    container_name: scraper-rabbitmq-distributed
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_distributed_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Redis for distributed rate limiting
+  redis-distributed:
+    image: redis:7-alpine
+    container_name: scraper-redis-distributed
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_distributed_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # PostgreSQL for shared state
+  postgres-distributed:
+    image: postgres:15-alpine
+    container_name: scraper-postgres-distributed
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=scraper
+      - POSTGRES_PASSWORD=scraper
+      - POSTGRES_DB=scraper_distributed
+    volumes:
+      - postgres_distributed_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraper -d scraper_distributed"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Worker 1
+  worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: scraper-worker-1
+    environment:
+      - WORKER_ID=worker-1
+      - MAX_CONCURRENT=5
+      - HEARTBEAT_INTERVAL=30
+      - GRACEFUL_SHUTDOWN_TIMEOUT=60
+      - METRICS_PORT=9090
+      - LOG_LEVEL=INFO
+      - QUEUE_HOST=rabbitmq-distributed
+      - QUEUE_PORT=5672
+      - QUEUE_USER=guest
+      - QUEUE_PASS=guest
+      - QUEUE_VHOST=/
+      - REDIS_URL=redis://redis-distributed:6379
+      - POSTGRES_DSN=postgresql://scraper:scraper@postgres-distributed:5432/scraper_distributed
+      - CHECKPOINT_ENABLED=true
+      - CHECKPOINT_INTERVAL_PAGES=100
+      - CHECKPOINT_INTERVAL_SECONDS=300
+    depends_on:
+      rabbitmq-distributed:
+        condition: service_healthy
+      redis-distributed:
+        condition: service_healthy
+      postgres-distributed:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.5'
+        reservations:
+          memory: 1G
+          cpus: '1'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:9090/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Worker 2
+  worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: scraper-worker-2
+    environment:
+      - WORKER_ID=worker-2
+      - MAX_CONCURRENT=5
+      - HEARTBEAT_INTERVAL=30
+      - GRACEFUL_SHUTDOWN_TIMEOUT=60
+      - METRICS_PORT=9090
+      - LOG_LEVEL=INFO
+      - QUEUE_HOST=rabbitmq-distributed
+      - QUEUE_PORT=5672
+      - QUEUE_USER=guest
+      - QUEUE_PASS=guest
+      - QUEUE_VHOST=/
+      - REDIS_URL=redis://redis-distributed:6379
+      - POSTGRES_DSN=postgresql://scraper:scraper@postgres-distributed:5432/scraper_distributed
+      - CHECKPOINT_ENABLED=true
+      - CHECKPOINT_INTERVAL_PAGES=100
+      - CHECKPOINT_INTERVAL_SECONDS=300
+    depends_on:
+      rabbitmq-distributed:
+        condition: service_healthy
+      redis-distributed:
+        condition: service_healthy
+      postgres-distributed:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.5'
+        reservations:
+          memory: 1G
+          cpus: '1'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:9090/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Worker 3
+  worker-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: scraper-worker-3
+    environment:
+      - WORKER_ID=worker-3
+      - MAX_CONCURRENT=5
+      - HEARTBEAT_INTERVAL=30
+      - GRACEFUL_SHUTDOWN_TIMEOUT=60
+      - METRICS_PORT=9090
+      - LOG_LEVEL=INFO
+      - QUEUE_HOST=rabbitmq-distributed
+      - QUEUE_PORT=5672
+      - QUEUE_USER=guest
+      - QUEUE_PASS=guest
+      - QUEUE_VHOST=/
+      - REDIS_URL=redis://redis-distributed:6379
+      - POSTGRES_DSN=postgresql://scraper:scraper@postgres-distributed:5432/scraper_distributed
+      - CHECKPOINT_ENABLED=true
+      - CHECKPOINT_INTERVAL_PAGES=100
+      - CHECKPOINT_INTERVAL_SECONDS=300
+    depends_on:
+      rabbitmq-distributed:
+        condition: service_healthy
+      redis-distributed:
+        condition: service_healthy
+      postgres-distributed:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.5'
+        reservations:
+          memory: 1G
+          cpus: '1'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:9090/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: scraper-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.distributed.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: scraper-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+volumes:
+  rabbitmq_distributed_data:
+  redis_distributed_data:
+  postgres_distributed_data:
+  prometheus_data:
+  grafana_data:

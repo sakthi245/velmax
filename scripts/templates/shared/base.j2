@@ -1,0 +1,159 @@
+"""
+Shared base classes and utilities for generated scrapers
+"""
+
+import asyncio
+import logging
+from dataclasses import dataclass, asdict, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from abc import ABC, abstractmethod
+from enum import Enum
+from pathlib import Path
+
+
+class OutputFormat(Enum):
+    JSON = "json"
+    JSONL = "jsonl"
+    CSV = "csv"
+    PARQUET = "parquet"
+    DB = "db"
+
+
+@dataclass
+class ScrapedItem:
+    url: str
+    title: str = ""
+    content: str = ""
+    data: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+        if self.metadata is None:
+            self.metadata = {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class BaseScraper(ABC):
+    """Base class for all scrapers"""
+
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.results: List[ScrapedItem] = []
+
+    @abstractmethod
+    async def scrape(self, url: str) -> List[ScrapedItem]:
+        pass
+
+    @abstractmethod
+    async def close(self):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    def add_result(self, item: ScrapedItem):
+        self.results.append(item)
+
+    def get_results(self) -> List[ScrapedItem]:
+        return self.results
+
+
+class OutputWriter:
+    """Handle writing output in multiple formats"""
+
+    def __init__(self, output_dir: str = "./output"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def write_jsonl(self, items: List[ScrapedItem], filename: str):
+        filepath = self.output_dir / f"{filename}.jsonl"
+        with open(filepath, "w", encoding="utf-8") as f:
+            for item in items:
+                f.write(json.dumps(item.to_dict(), ensure_ascii=False) + "\n")
+
+    def write_json(self, items: List[ScrapedItem], filename: str):
+        filepath = self.output_dir / f"{filename}.json"
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump([item.to_dict() for item in items], f, indent=2, ensure_ascii=False)
+
+    def write_csv(self, items: List[ScrapedItem], filename: str):
+        import csv
+        filepath = self.output_dir / f"{filename}.csv"
+        if not items:
+            return
+
+        # Flatten data for CSV
+        fieldnames = set()
+        for item in items:
+            fieldnames.update(item.to_dict().keys())
+
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=sorted(fieldnames))
+            writer.writeheader()
+            for item in items:
+                writer.writerow(item.to_dict())
+
+    def write_parquet(self, items: List[ScrapedItem], filename: str):
+        import polars as pl
+        filepath = self.output_dir / f"{filename}.parquet"
+        df = pl.DataFrame([item.to_dict() for item in items])
+        df.write_parquet(filepath)
+
+
+class DataCleaner:
+    """Clean and normalize scraped data"""
+
+    @staticmethod
+    def clean_text(text: str) -> str:
+        if not text:
+            return ""
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    @staticmethod
+    def normalize_price(price: str) -> Optional[float]:
+        if not price:
+            return None
+        cleaned = re.sub(r"[^\d.,]", "", price)
+        cleaned = cleaned.replace(",", ".")
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def normalize_url(url: str, base_url: str) -> str:
+        from urllib.parse import urljoin
+        return urljoin(base_url, url)
+
+
+class SchemaValidator:
+    """Validate data against JSON schema"""
+
+    def __init__(self, schema: Dict[str, Any]):
+        self.schema = schema
+
+    def validate(self, data: Dict[str, Any]) -> tuple[bool, List[str]]:
+        import jsonschema
+        try:
+            jsonschema.validate(data, self.schema)
+            return True, []
+        except jsonschema.ValidationError as e:
+            return False, [f"{e.json_path}: {e.message}"]
+
+
+import json
+import re
+import csv
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin

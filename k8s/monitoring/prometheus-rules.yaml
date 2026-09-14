@@ -1,0 +1,180 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hybrid-scraper-alerts
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    release: prometheus
+spec:
+  groups:
+  - name: hybrid-scraper.rules
+    interval: 30s
+    rules:
+    # High-level alerts
+    - alert: HybridScraperDown
+      expr: up{job="hybrid-scraper-api"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Hybrid Scraper API is down"
+        description: "Hybrid Scraper API has been down for more than 1 minute."
+    
+    - alert: HybridScraperWorkerDown
+      expr: up{job="hybrid-scraper-worker"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Hybrid Scraper Workers are down"
+        description: "No workers have been reporting for more than 2 minutes."
+    
+    # Resource alerts
+    - alert: HybridScraperHighCPU
+      expr: (sum(rate(container_cpu_usage_seconds_total{namespace="hybrid-scraper", container!=""}[5m])) by (pod) / sum(container_spec_cpu_quota{namespace="hybrid-scraper", container!=""} / container_spec_cpu_period{namespace="hybrid-scraper", container!=""}) by (pod)) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage on {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} CPU usage is above 85% for 5 minutes."
+    
+    - alert: HybridScraperHighMemory
+      expr: (sum(container_memory_working_set_bytes{namespace="hybrid-scraper", container!=""}) by (pod) / sum(container_spec_memory_limit_bytes{namespace="hybrid-scraper", container!=""}) by (pod)) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage on {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} memory usage is above 85% for 5 minutes."
+    
+    # Scraper-specific alerts
+    - alert: HybridScraperHighErrorRate
+      expr: (sum(rate(scraper_worker_tasks_total{status="failed", namespace="hybrid-scraper"}[5m])) / sum(rate(scraper_worker_tasks_total{namespace="hybrid-scraper"}[5m]))) > 0.1
+      for: 3m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High scraper error rate"
+        description: "Error rate is above 10% for 3 minutes."
+    
+    - alert: HybridScraperQueueBacklog
+      expr: sum(scraper_worker_queue_depth{namespace="hybrid-scraper"}) > 100
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Scraper queue backlog"
+        description: "Task queue has more than 100 pending tasks for 5 minutes."
+    
+    - alert: HybridScraperLowThroughput
+      expr: sum(rate(scraper_worker_tasks_total{status="success", namespace="hybrid-scraper"}[5m])) < 0.1
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Low scraper throughput"
+        description: "Successful task throughput is below 0.1 tasks/sec for 10 minutes."
+    
+    - alert: HybridScraperHighLatency
+      expr: histogram_quantile(0.95, sum(rate(scraper_worker_task_duration_seconds_bucket{namespace="hybrid-scraper"}[5m])) by (le)) > 30
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High scraper latency"
+        description: "P95 task duration is above 30 seconds for 5 minutes."
+    
+    # Infrastructure alerts
+    - alert: RabbitMQDown
+      expr: up{job="rabbitmq"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "RabbitMQ is down"
+        description: "RabbitMQ message queue is unavailable."
+    
+    - alert: RabbitMQHighQueue
+      expr: rabbitmq_queue_messages_ready{namespace="hybrid-scraper"} > 1000
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "RabbitMQ queue backlog"
+        description: "RabbitMQ queue has more than 1000 messages waiting."
+    
+    - alert: PostgresDown
+      expr: up{job="postgres"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "PostgreSQL is down"
+        description: "PostgreSQL database is unavailable."
+    
+    - alert: PostgresHighConnections
+      expr: (pg_stat_activity_count{namespace="hybrid-scraper"} / pg_settings_max_connections{namespace="hybrid-scraper"}) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "PostgreSQL high connection usage"
+        description: "PostgreSQL connection usage is above 80%."
+    
+    - alert: RedisDown
+      expr: up{job="redis"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Redis is down"
+        description: "Redis cache is unavailable."
+    
+    - alert: RedisHighMemory
+      expr: (redis_memory_used_bytes{namespace="hybrid-scraper"} / redis_memory_max_bytes{namespace="hybrid-scraper"}) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Redis high memory usage"
+        description: "Redis memory usage is above 85%."
+    
+    # Storage alerts
+    - alert: PVCUsageHigh
+      expr: (kubelet_volume_stats_used_bytes{namespace="hybrid-scraper"} / kubelet_volume_stats_capacity_bytes{namespace="hybrid-scraper"}) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "PVC {{ $labels.persistentvolumeclaim }} usage high"
+        description: "PVC {{ $labels.persistentvolumeclaim }} is above 85% capacity."
+    
+    - alert: PVCNearCapacity
+      expr: (kubelet_volume_stats_used_bytes{namespace="hybrid-scraper"} / kubelet_volume_stats_capacity_bytes{namespace="hybrid-scraper"}) > 0.95
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "PVC {{ $labels.persistentvolumeclaim }} near capacity"
+        description: "PVC {{ $labels.persistentvolumeclaim }} is above 95% capacity."
+    
+    # HPA alerts
+    - alert: HPAReplicasMaxed
+      expr: kube_hpa_status_current_replicas{namespace="hybrid-scraper"} == kube_hpa_spec_max_replicas{namespace="hybrid-scraper"}
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA {{ $labels.horizontalpodautoscaler }} at max replicas"
+        description: "HPA has been at maximum replicas for 10 minutes."
+    
+    - alert: HPAScalingLimited
+      expr: kube_hpa_status_current_replicas{namespace="hybrid-scraper"} < kube_hpa_spec_min_replicas{namespace="hybrid-scraper"}
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA {{ $labels.horizontalpodautoscaler }} below min replicas"
+        description: "HPA has fewer replicas than minimum for 5 minutes."

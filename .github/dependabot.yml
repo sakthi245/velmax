@@ -1,0 +1,68 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "pip"
+    commit-message:
+      prefix: "deps(pip)"
+      include: "scope"
+    groups:
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "ruff*"
+          - "mypy*"
+          - "pre-commit*"
+          - "bandit*"
+          - "safety*"
+      web-framework:
+        patterns:
+          - "aiohttp*"
+          - "httpx*"
+          - "fastapi*"
+      database:
+        patterns:
+          - "sqlalchemy*"
+          - "asyncpg*"
+          - "redis*"
+      monitoring:
+        patterns:
+          - "prometheus*"
+          - "opentelemetry*"
+      cloud:
+        patterns:
+          - "aioboto3*"
+          - "aiokafka*"
+          - "aio-pika*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"

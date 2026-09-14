@@ -1,0 +1,163 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hybrid-scraper-worker
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/version: "0.3.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hybrid-scraper
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hybrid-scraper
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/version: "0.3.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: hybrid-scraper
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: worker
+        image: hybrid-scraper:0.3.0
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "scraper.worker"]
+        envFrom:
+        - configMapRef:
+            name: hybrid-scraper-config
+        - configMapRef:
+            name: hybrid-scraper-engines-config
+        - secretRef:
+            name: hybrid-scraper-secrets
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: WORKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MAX_CONCURRENT
+          value: "5"
+        - name: HEARTBEAT_INTERVAL
+          value: "30"
+        - name: GRACEFUL_SHUTDOWN_TIMEOUT
+          value: "60"
+        - name: METRICS_PORT
+          value: "9090"
+        - name: QUEUE_HOST
+          value: "rabbitmq"
+        - name: QUEUE_PORT
+          value: "5672"
+        - name: QUEUE_USER
+          value: "guest"
+        - name: QUEUE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: hybrid-scraper-secrets
+              key: RABBITMQ_PASSWORD
+        - name: QUEUE_VHOST
+          value: "/"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: POSTGRES_DSN
+          value: "postgresql://scraper:$(POSTGRES_PASSWORD)@postgres:5432/scraper_distributed"
+        - name: CHECKPOINT_ENABLED
+          value: "true"
+        - name: CHECKPOINT_INTERVAL_PAGES
+          value: "100"
+        - name: CHECKPOINT_INTERVAL_SECONDS
+          value: "300"
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+          limits:
+            cpu: "4000m"
+            memory: "8Gi"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: output
+          mountPath: /data/output
+        - name: cache
+          mountPath: /data/cache
+        - name: config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: engines-config
+          mountPath: /app/config/engines.yaml
+          subPath: engines.yaml
+          readOnly: true
+        - name: playwright-cache
+          mountPath: /home/scraper/.cache/ms-playwright
+      volumes:
+      - name: output
+        persistentVolumeClaim:
+          claimName: hybrid-scraper-output
+      - name: cache
+        emptyDir:
+          sizeLimit: 4Gi
+      - name: config
+        configMap:
+          name: hybrid-scraper-config
+          items:
+          - key: config.yaml
+            path: config.yaml
+      - name: engines-config
+        configMap:
+          name: hybrid-scraper-engines-config
+          items:
+          - key: engines.yaml
+            path: engines.yaml
+      - name: playwright-cache
+        persistentVolumeClaim:
+          claimName: playwright-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hybrid-scraper-worker
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: worker

@@ -1,0 +1,21 @@
+# Generated requirements for {{ engine }} engine
+# Generated at: {{ timestamp }}
+
+playwright>=1.44
+playwright-stealth>=1.0
+httpx>=0.27
+selectolax>=0.3
+pydantic>=2.7
+pydantic-settings>=2.3
+structlog>=24.1
+tenacity>=8.2
+groq>=0.6
+{% if engine == "crawlee" %}
+crawlee[playwright]>=1.9
+{% elif engine == "firecrawl" %}
+firecrawl-py>=0.6
+{% elif engine == "playwright" %}
+playwright>=1.44
+{% elif engine == "scrapy" %}
+scrapy>=2.11
+{% endif %}

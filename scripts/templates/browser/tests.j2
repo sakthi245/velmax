@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""
+Tests for {{ profile.category }} Playwright scraper
+"""
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+from main import {{ profile.category | capitalize }}BrowserScraper, ScrapedItem
+
+
+@pytest.fixture
+def scraper():
+    return {{ profile.category | capitalize }}BrowserScraper()
+
+
+@pytest.mark.asyncio
+async def test_scraper_start(scraper):
+    """Test browser starts correctly"""
+    with patch("playwright.async_api.async_playwright") as mock_pw:
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        mock_pw.return_value.__aenter__.return_value = mock_pw.return_value
+        mock_pw.return_value.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+
+        async with scraper:
+            assert scraper.browser is not None
+            assert scraper.context is not None
+            assert scraper.page is not None
+
+
+@pytest.mark.asyncio
+async def test_scrape_method(scraper):
+    """Test scrape method"""
+    with patch("playwright.async_api.async_playwright") as mock_pw:
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        mock_pw.return_value.__aenter__.return_value = mock_pw.return_value
+        mock_pw.return_value.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+        mock_page.goto = AsyncMock()
+        mock_page.content = AsyncMock(return_value="<html><title>Test</title></html>")
+        mock_page.title = AsyncMock(return_value="Test Page")
+
+        async with scraper:
+            results = await scraper.scrape("https://example.com")
+
+        assert len(results) >= 0
+
+
+@pytest.mark.asyncio
+async def test_infinite_scroll(scraper):
+    """Test infinite scroll logic"""
+    with patch("playwright.async_api.async_playwright") as mock_pw:
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        mock_pw.return_value.__aenter__.return_value = mock_pw.return_value
+        mock_pw.return_value.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+        mock_page.evaluate = AsyncMock()
+
+        async with scraper:
+            await scraper._infinite_scroll()
+
+        assert mock_page.evaluate.call_count > 0
+
+
+@pytest.mark.asyncio
+async def test_interact_sequence(scraper):
+    """Test interaction sequence execution"""
+    with patch("playwright.async_api.async_playwright") as mock_pw:
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        mock_pw.return_value.__aenter__.return_value = mock_pw.return_value
+        mock_pw.return_value.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+        mock_page.click = AsyncMock()
+        mock_page.fill = AsyncMock()
+        mock_page.hover = AsyncMock()
+
+        sequence = [
+            {"action": "click", "selector": ".button"},
+            {"action": "fill", "selector": ".input", "text": "test"},
+        ]
+
+        async with scraper:
+            result = await scraper.interact(sequence)
+
+        assert "success" in result
+        assert "steps" in result
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

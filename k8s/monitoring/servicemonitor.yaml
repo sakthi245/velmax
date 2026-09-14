@@ -1,0 +1,108 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hybrid-scraper-api
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: api
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hybrid-scraper
+      app.kubernetes.io/component: api
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - hybrid-scraper
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hybrid-scraper-worker
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: worker
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hybrid-scraper
+      app.kubernetes.io/component: worker
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - hybrid-scraper
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rabbitmq
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: queue
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: rabbitmq
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+  namespaceSelector:
+    matchNames:
+    - hybrid-scraper
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: database
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: postgresql
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+  namespaceSelector:
+    matchNames:
+    - hybrid-scraper
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: cache
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+  namespaceSelector:
+    matchNames:
+    - hybrid-scraper

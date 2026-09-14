@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hybrid-scraper-api
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: api
+    app.kubernetes.io/version: "0.3.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hybrid-scraper
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hybrid-scraper
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: "0.3.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: hybrid-scraper
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: api
+        image: hybrid-scraper:0.3.0
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "scraper.api_server"]
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 9090
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: hybrid-scraper-config
+        - configMapRef:
+            name: hybrid-scraper-engines-config
+        - secretRef:
+            name: hybrid-scraper-secrets
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: output
+          mountPath: /data/output
+        - name: cache
+          mountPath: /data/cache
+        - name: config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: engines-config
+          mountPath: /app/config/engines.yaml
+          subPath: engines.yaml
+          readOnly: true
+      volumes:
+      - name: output
+        persistentVolumeClaim:
+          claimName: hybrid-scraper-output
+      - name: cache
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: config
+        configMap:
+          name: hybrid-scraper-config
+          items:
+          - key: config.yaml
+            path: config.yaml
+      - name: engines-config
+        configMap:
+          name: hybrid-scraper-engines-config
+          items:
+          - key: engines.yaml
+            path: engines.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hybrid-scraper-api
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: api

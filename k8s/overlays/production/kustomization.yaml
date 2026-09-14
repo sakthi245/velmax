@@ -1,0 +1,80 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+patches:
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: hybrid-scraper-api
+      namespace: hybrid-scraper
+    spec:
+      replicas: 3
+  target:
+    kind: Deployment
+    name: hybrid-scraper-api
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: hybrid-scraper-worker
+      namespace: hybrid-scraper
+    spec:
+      replicas: 5
+  target:
+    kind: Deployment
+    name: hybrid-scraper-worker
+- patch: |-
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: hybrid-scraper-api-hpa
+      namespace: hybrid-scraper
+    spec:
+      minReplicas: 3
+      maxReplicas: 20
+  target:
+    kind: HorizontalPodAutoscaler
+    name: hybrid-scraper-api-hpa
+- patch: |-
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: hybrid-scraper-worker-hpa
+      namespace: hybrid-scraper
+    spec:
+      minReplicas: 5
+      maxReplicas: 50
+  target:
+    kind: HorizontalPodAutoscaler
+    name: hybrid-scraper-worker-hpa
+
+configMapGenerator:
+- name: hybrid-scraper-config
+  behavior: merge
+  literals:
+  - mode=auto
+  - log_level=INFO
+
+secretGenerator:
+- name: hybrid-scraper-secrets
+  behavior: merge
+  literals:
+  - GROQ_API_KEY=REPLACE_WITH_PRODUCTION_KEY
+  - SERPAPI_API_KEY=REPLACE_WITH_PRODUCTION_KEY
+  - TINYFISH_API_KEY=REPLACE_WITH_PRODUCTION_KEY
+
+images:
+- name: hybrid-scraper
+  newTag: "0.3.0"
+
+replicas:
+- name: hybrid-scraper-api
+  count: 3
+- name: hybrid-scraper-worker
+  count: 5
+
+namespace: hybrid-scraper

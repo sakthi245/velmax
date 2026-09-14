@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hybrid-scraper-backup
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: hybrid-scraper
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR="/backups/${TIMESTAMP}"
+              mkdir -p "${BACKUP_DIR}"
+              
+              echo "Starting backup at $(date)"
+              
+              # Backup PostgreSQL
+              echo "Backing up PostgreSQL..."
+              pg_dump -h postgres -U scraper -d scraper_distributed | gzip > "${BACKUP_DIR}/postgres_${TIMESTAMP}.sql.gz"
+              
+              # Backup Redis
+              echo "Backing up Redis..."
+              redis-cli -h redis -a $REDIS_PASSWORD --rdb "${BACKUP_DIR}/redis_${TIMESTAMP}.rdb"
+              
+              # Backup RabbitMQ definitions
+              echo "Backing up RabbitMQ..."
+              curl -u guest:$RABBITMQ_PASSWORD -X GET http://rabbitmq:15672/api/definitions > "${BACKUP_DIR}/rabbitmq_${TIMESTAMP}.json"
+              
+              # Backup Kubernetes resources
+              echo "Backing up Kubernetes resources..."
+              kubectl get all,configmaps,secrets,pvc,pv,ingress,networkpolicies,prometheusrules,servicemonitors -n hybrid-scraper -o yaml > "${BACKUP_DIR}/k8s_resources_${TIMESTAMP}.yaml"
+              
+              # Upload to S3 (if configured)
+              if [ -n "$S3_BUCKET" ]; then
+                echo "Uploading to S3..."
+                aws s3 sync "${BACKUP_DIR}" "s3://${S3_BUCKET}/hybrid-scraper/${TIMESTAMP}/"
+              fi
+              
+              # Cleanup old backups (keep last 7 days)
+              find /backups -type d -mtime +7 -exec rm -rf {} \;
+              
+              echo "Backup completed at $(date)"
+            env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hybrid-scraper-secrets
+                  key: REDIS_PASSWORD
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hybrid-scraper-secrets
+                  key: RABBITMQ_PASSWORD
+            volumeMounts:
+            - name: backups
+              mountPath: /backups
+            - name: kubeconfig
+              mountPath: /root/.kube
+          volumes:
+          - name: backups
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: kubeconfig
+            configMap:
+              name: kubectl-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage
+  namespace: hybrid-scraper
+  labels:
+    app.kubernetes.io/name: hybrid-scraper
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubectl-config
+  namespace: hybrid-scraper
+data:
+  config: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - cluster:
+        server: https://kubernetes.default.svc
+      name: kubernetes
+    contexts:
+    - context:
+        cluster: kubernetes
+        namespace: hybrid-scraper
+        user: hybrid-scraper
+      name: hybrid-scraper
+    current-context: hybrid-scraper
+    users:
+    - name: hybrid-scraper
+      user:
+        token: {{ .serviceAccountToken }}

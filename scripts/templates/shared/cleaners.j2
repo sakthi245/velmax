@@ -1,0 +1,80 @@
+"""
+Shared data cleaning utilities
+"""
+
+import re
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
+
+
+def clean_text(text: str) -> str:
+    """Clean and normalize text"""
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def clean_html(text: str) -> str:
+    """Remove HTML tags"""
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", "", text)
+    return clean_text(text)
+
+
+def normalize_price(price: str) -> Optional[float]:
+    """Extract numeric price from string"""
+    if not price:
+        return None
+    # Remove currency symbols and normalize
+    cleaned = re.sub(r"[^\d.,]", "", price)
+    # Handle different decimal separators
+    if "," in cleaned and "." in cleaned:
+        # Determine which is decimal separator
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def normalize_url(url: str, base_url: str) -> str:
+    """Normalize URL"""
+    if not url:
+        return ""
+    return urljoin(base_url, url)
+
+
+def extract_domain(url: str) -> str:
+    """Extract domain from URL"""
+    return urlparse(url).netloc
+
+
+def deduplicate_items(items: List[Dict[str, Any]], key: str = "url") -> List[Dict[str, Any]]:
+    """Remove duplicate items based on key"""
+    seen = set()
+    unique = []
+    for item in items:
+        val = item.get(key)
+        if val and val not in seen:
+            seen.add(val)
+            unique.append(item)
+    return unique
+
+
+def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = "_") -> Dict[str, Any]:
+    """Flatten nested dictionary"""
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)

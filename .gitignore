@@ -1,0 +1,51 @@
+__pycache__/
+.pytest_cache/
+.scraper_state.json
+output/
+.env
+.env.firecrawl
+storage/
+*.egg-info/
+.test-tmp/
+.opencode
+AGENTS.md
+CONTEXT_TRANSFER.md
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories
+cache/
+*.cache/
+
+# Test artifacts
+*.pkl
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# graphify
+graphify-out/cost.json

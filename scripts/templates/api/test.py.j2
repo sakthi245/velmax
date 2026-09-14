@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""
+Tests for {{ profile.category }} API Client
+"""
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+from main import {{ profile.category | capitalize }}APIClient, ScrapedItem
+
+
+@pytest.fixture
+def client():
+    return {{ profile.category | capitalize }}APIClient()
+
+
+@pytest.mark.asyncio
+async def test_client_initialization(client):
+    """Test client initializes correctly"""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value = mock_client
+
+        async with client:
+            assert client.client is not None
+
+
+@pytest.mark.asyncio
+async def test_oauth2_setup(client):
+    """Test OAuth2 setup"""
+    client.auth_method = "oauth2"
+    client.config = {
+        "oauth_client_id": "test_id",
+        "oauth_client_secret": "test_secret",
+        "oauth_token_url": "https://example.com/oauth/token",
+    }
+
+    with patch("authlib.integrations.httpx_client.AsyncOAuth2Client") as mock_oauth:
+        mock_oauth_instance = AsyncMock()
+        mock_oauth.return_value = mock_oauth_instance
+        mock_oauth_instance.fetch_token = AsyncMock()
+
+        await client._setup_oauth2()
+
+        assert client.auth is not None
+        mock_oauth_instance.fetch_token.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_call_endpoint(client):
+    """Test calling an endpoint"""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.return_value = {"data": {"name": "test"}}
+        mock_response.raise_for_status = Mock()
+        mock_client.request.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        async with client:
+            result = await client._call_endpoint({
+                "method": "GET",
+                "url": "/api/test",
+            })
+
+        assert result == {"data": {"name": "test"}}
+
+
+@pytest.mark.asyncio
+async def test_mock_call(client):
+    """Test mock call from HAR"""
+    har_data = {
+        "log": {
+            "entries": [{
+                "request": {
+                    "url": "https://example.com/api/test",
+                    "method": "GET",
+                },
+                "response": {
+                    "status": 200,
+                    "content": {"text": '{"data": {"name": "test"}}'},
+                }
+            }]
+        }
+    }
+
+    import tempfile
+    import json
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".har", delete=False) as f:
+        json.dump(har_data, f)
+        har_path = f.name
+
+    try:
+        async with client:
+            results = await client.mock_call(har_path)
+
+        assert len(results) == 1
+        assert results[0].metadata.get("mock") is True
+    finally:
+        import os
+        os.unlink(har_path)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

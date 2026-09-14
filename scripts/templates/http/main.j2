@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""
+Generated Scrapy Spider for {{ profile.url }}
+Generated at: {{ timestamp }}
+Profile: {{ profile.category }} | Anti-bot: {{ profile.anti_bot_level }}
+"""
+
+import scrapy
+import json
+import logging
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, asdict
+from urllib.parse import urljoin, urlparse
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScrapedItem:
+    url: str
+    title: str = ""
+    content: str = ""
+    data: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+        if self.metadata is None:
+            self.metadata = {}
+
+
+class {{ profile.category | capitalize }}Spider(scrapy.Spider):
+    name = "{{ profile.category }}_spider"
+    allowed_domains = ["{{ urlparse(profile.url).netloc }}"]
+    start_urls = ["{{ profile.url }}"]
+
+    custom_settings = {
+        "DOWNLOAD_DELAY": {{ config.http_engine.autothrottle_start_delay }},
+        "CONCURRENT_REQUESTS": {{ config.concurrency.max_concurrent_requests }},
+        "AUTOTHROTTLE_ENABLED": {{ config.http_engine.autothrottle_enabled | lower }},
+        "AUTOTHROTTLE_START_DELAY": {{ config.http_engine.autothrottle_start_delay }},
+        "AUTOTHROTTLE_MAX_DELAY": {{ config.http_engine.autothrottle_max_delay }},
+        "AUTOTHROTTLE_TARGET_CONCURRENCY": {{ config.http_engine.autothrottle_target_concurrency }},
+        "ROBOTSTXT_OBEY": {{ config.domain_rules.respect_robots_txt | lower }},
+        "USER_AGENT": "{{ config.user_agent.pool[0] if config.user_agent.pool else 'HybridScraper/1.0' }}",
+        "DEFAULT_REQUEST_HEADERS": {{ config.http_engine.default_headers | tojson }},
+        "COOKIES_ENABLED": {{ config.session_config.persist_cookies | lower }},
+    }
+
+    # Selectors from profile
+    SELECTORS = {{ selectors | tojson_pretty }}
+    PAGINATION = {{ pagination | tojson_pretty }}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_pages = {{ config.domain_rules.max_pages_per_domain }}
+        self.max_depth = {{ config.domain_rules.max_depth }}
+        self.pages_scraped = 0
+        self.current_depth = 0
+
+    def parse(self, response):
+        """Parse list page and extract items + pagination"""
+        self.pages_scraped += 1
+
+        # Extract items from list page
+        items = self._extract_items(response)
+        for item in items:
+            yield item
+
+        # Follow pagination
+        if self.pages_scraped < self.max_pages:
+            next_page = self._get_next_page(response)
+            if next_page:
+                yield response.follow(next_page, callback=self.parse)
+
+    def _extract_items(self, response) -> List[ScrapedItem]:
+        """Extract items using selectors from profile"""
+        items = []
+
+        # Try to find item containers
+        item_selectors = [
+            ".product", ".item", ".listing", ".card",
+            "[data-product]", "[data-item]", "article",
+            "li.product", "div.product-item"
+        ]
+
+        containers = []
+        for sel in item_selectors:
+            found = response.css(sel)
+            if found:
+                containers = found
+                break
+
+        if not containers:
+            # Try to extract from page directly
+            items.append(self._extract_single_item(response, ""))
+        else:
+            for container in containers:
+                items.append(self._extract_single_item(response, container))
+
+        return items
+
+    def _extract_single_item(self, response, container) -> ScrapedItem:
+        """Extract single item using profile selectors"""
+        if container:
+            base = container
+        else:
+            base = response
+
+        data = {}
+        for field_name, selector_config in self.SELECTORS.items():
+            if isinstance(selector_config, list):
+                selector_config = selector_config[0] if selector_config else {}
+
+            sel = selector_config.get("selector", "")
+            sel_type = selector_config.get("selector_type", "css")
+            attr = selector_config.get("attribute")
+            multiple = selector_config.get("multiple", False)
+
+            try:
+                if sel_type == "css":
+                    if multiple:
+                        elements = base.css(sel)
+                        values = []
+                        for el in elements:
+                            if attr:
+                                val = el.attrib.get(attr)
+                            else:
+                                val = el.get()
+                            if val:
+                                values.append(val.strip())
+                        data[field_name] = values
+                    else:
+                        el = base.css(sel).get()
+                        if el:
+                            if attr:
+                                data[field_name] = el.attrib.get(attr, "").strip()
+                            else:
+                                data[field_name] = el.strip()
+            except Exception as e:
+                logger.warning(f"Failed to extract {field_name}: {e}")
+
+        return ScrapedItem(
+            url=response.url,
+            title=response.css("title::text").get() or "",
+            content=response.text[:5000],
+            data=data,
+            metadata={
+                "depth": self.current_depth,
+                "status": response.status,
+            }
+        )
+
+    def _get_next_page(self, response) -> Optional[str]:
+        """Get next page URL using pagination config"""
+        if self.PAGINATION.get("type") == "url_param":
+            # Extract current page and increment
+            current_page = 1
+            parsed = urlparse(response.url)
+            query_params = dict(param.split("=") for param in parsed.query.split("&") if "=" in param)
+            if "page" in query_params:
+                current_page = int(query_params["page"])
+            next_page = current_page + 1
+            query_params["page"] = str(next_page)
+            new_query = "&".join(f"{k}={v}" for k, v in query_params.items())
+            return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
+
+        # Try next button selectors
+        for sel in self.PAGINATION.get("selectors", []):
+            next_link = response.css(sel + "::attr(href)").get()
+            if next_link:
+                return urljoin(response.url, next_link)
+
+        return None
+
+
+def main(request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Entry point for generated script execution"""
+    import asyncio
+    from scrapy.crawler import CrawlerProcess
+    from scrapy.utils.project import get_project_settings
+
+    if request_data is None:
+        request_data = {}
+
+    url = request_data.get("url", "{{ profile.url }}")
+    goal = request_data.get("goal", "")
+    schema = request_data.get("schema")
+
+    # Update start URLs if different
+    if url != "{{ profile.url }}":
+        {{ profile.category | capitalize }}Spider.start_urls = [url]
+
+    process = CrawlerProcess(get_project_settings())
+    results = []
+
+    def collect_results(item):
+        results.append(asdict(item))
+
+    # We need to monkey-patch to collect results
+    original_parse = {{ profile.category | capitalize }}Spider.parse
+
+    def parse_wrapper(self, response):
+        for item in original_parse(self, response):
+            collect_results(item)
+            yield item
+
+    {{ profile.category | capitalize }}Spider.parse = parse_wrapper
+
+    process.crawl({{ profile.category | capitalize }}Spider)
+    process.start()
+
+    return {
+        "success": True,
+        "url": url,
+        "data": results,
+        "engine_used": "scrapy",
+        "items_count": len(results),
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    import json
+
+    # CLI mode
+    request_file = None
+    output_file = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg == "--request" and i + 1 < len(sys.argv):
+            request_file = sys.argv[i + 1]
+        elif arg == "--output" and i + 1 < len(sys.argv):
+            output_file = sys.argv[i + 1]
+
+    if request_file:
+        with open(request_file) as f:
+            request_data = json.load(f)
+    else:
+        request_data = {}
+
+    result = main(request_data)
+
+    if output_file:
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2)
+    else:
+        print(json.dumps(result, indent=2))

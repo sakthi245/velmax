@@ -1,0 +1,25 @@
+# Firecrawl Config for {{ profile.url }}
+
+BASE_URL = "{{ profile.url }}"
+API_URL = "http://localhost:3002"
+API_KEY = "local-dev"
+
+FORMATS = ["markdown", "html"]
+ONLY_MAIN_CONTENT = true
+PROXY = "auto"
+TIMEOUT = 120000
+WAIT_FOR_SELECTOR = ""
+WAIT_FOR_TIMEOUT = 5000
+SCREENSHOT = false
+PDF = false
+EXTRACT_WITH_LLM = false
+LLM_SCHEMA = {}
+LLM_PROMPT = "Extract structured data from the page"
+
+DEFAULT_HEADERS = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+}
+
+TIMEOUT_SECONDS = 120
+MAX_RETRIES = 3

@@ -1,0 +1,16 @@
+# Hybrid Scraper Config for {{ profile.url }}
+
+# HTTP Engine settings
+HTTP_ENGINE = {{ config.http_engine | tojson }}
+
+# Browser Engine settings
+BROWSER_ENGINE = {{ config.browser_engine | tojson }}
+
+# API Engine settings
+API_ENGINE = {{ config.api_engine | tojson }}
+
+# Strategy configuration
+STRATEGY = {
+    "list_engine": "http",
+    "detail_engine": "browser",
+}
