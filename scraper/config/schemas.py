@@ -735,7 +735,7 @@ class ExtractionConfig(BaseModel):
     fallback_llm: Optional[LLMProviderConfig] = Field(default_factory=lambda: LLMProviderConfig(
         name="nvidia",
         base_url="https://integrate.api.nvidia.com/v1",
-        api_key="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",
+        api_key="***REMOVED***",
         model="nvidia/nemotron-3.5-lightning",
         temperature=0.1,
         max_tokens=2000,
